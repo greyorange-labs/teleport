@@ -42,6 +42,7 @@ import (
 	"github.com/gravitational/teleport/lib/events"
 	"github.com/gravitational/teleport/lib/inventory"
 	"github.com/gravitational/teleport/lib/join/boundkeypair"
+	"github.com/gravitational/teleport/lib/modules"
 	"github.com/gravitational/teleport/lib/modules/modulestest"
 	"github.com/gravitational/teleport/lib/services"
 	"github.com/gravitational/teleport/lib/utils"
@@ -339,4 +340,8 @@ type MigrateWindowsCAParams = migrateWindowsCAParams
 
 func MigrateWindowsCA(ctx context.Context, params MigrateWindowsCAParams) error {
 	return migrateWindowsCA(ctx, params)
+}
+
+func CheckRoleFeatureSupport(mod modules.Modules, role types.Role) error {
+	return checkRoleFeatureSupport(mod, role)
 }

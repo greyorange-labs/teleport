@@ -1115,6 +1115,15 @@ func (h *Handler) bindDefaultEndpoints() {
 	h.PUT("/webapi/roles/:name", h.WithAuth(h.updateRoleHandle))
 	h.DELETE("/webapi/roles/:name", h.WithAuth(h.deleteRole))
 	h.GET("/webapi/requestableroles", h.WithAuth(h.listRequestableRolesHandle))
+
+	// Access request workflow (request, review, delete) for the open source
+	// build, where the enterprise web handlers are not available.
+	h.GET("/webapi/sites/:site/accessrequests", h.WithClusterAuth(h.listAccessRequests))
+	h.POST("/webapi/sites/:site/accessrequests", h.WithClusterAuth(h.createAccessRequest))
+	h.GET("/webapi/sites/:site/accessrequests/:id", h.WithClusterAuth(h.getAccessRequest))
+	h.DELETE("/webapi/sites/:site/accessrequests/:id", h.WithClusterAuth(h.deleteAccessRequest))
+	h.POST("/webapi/sites/:site/accessrequests/:id/review", h.WithClusterAuth(h.reviewAccessRequest))
+	h.POST("/webapi/sites/:site/accesscapabilities", h.WithClusterAuth(h.getAccessCapabilities))
 	h.GET("/webapi/presetroles", h.WithUnauthenticatedHighLimiter(h.getPresetRoles))
 
 	h.GET("/webapi/github", h.WithAuth(h.getGithubConnectorsHandle))

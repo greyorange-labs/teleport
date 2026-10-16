@@ -412,7 +412,7 @@ func (p *defaultModules) Features() Features {
 		p.automaticUpgrades = automaticupgrades.IsEnabled()
 	})
 
-	return Features{
+	return withAccessRequestFeatures(Features{
 		AutomaticUpgrades: p.automaticUpgrades,
 		SupportType:       proto.SupportType_SUPPORT_TYPE_FREE,
 		Entitlements: map[entitlements.EntitlementKind]EntitlementInfo{
@@ -422,7 +422,7 @@ func (p *defaultModules) Features() Features {
 			entitlements.JoinActiveSessions: {Enabled: true, Limit: 0},
 			entitlements.K8s:                {Enabled: true, Limit: 0},
 		},
-	}
+	})
 }
 
 // SetFeatures sets features queried from Cloud.
