@@ -1,0 +1,71 @@
+# GreyOrange PAM roles for the just-in-time access request workflow.
+#
+# Everyone who logs in gets `gor-base` (no standing access, can request).
+# Members of the privileged Google groups also get `gor-approver`.
+# `gor-*-access` roles carry the actual access and are only ever granted
+# through an approved access request.
+#
+# Apply with: tctl create -f examples/greyorange/pam/roles.yaml
+---
+kind: role
+version: v8
+metadata:
+  name: gor-base
+  description: Default role for all users. No standing access; can request access.
+spec:
+  options:
+    # A reason is required for every access request.
+    request_access: reason
+    max_session_ttl: 8h
+  allow:
+    rules:
+      - resources: [access_request]
+        verbs: [list, read, create]
+    request:
+      roles: ["gor-*-access"]
+      # Lets users find and request individual resources they cannot access.
+      search_as_roles: ["gor-*-access"]
+      max_duration: 8h
+      reason:
+        mode: required
+---
+kind: role
+version: v8
+metadata:
+  name: gor-approver
+  description: Can review (approve or deny) access requests. Map to privileged Google groups.
+spec:
+  allow:
+    rules:
+      - resources: [access_request]
+        verbs: [list, read, update]
+    review_requests:
+      roles: ["gor-*-access"]
+      # Lets reviewers see the resources a request is for.
+      preview_as_roles: ["gor-*-access"]
+---
+kind: role
+version: v8
+metadata:
+  name: gor-node-access
+  description: SSH access to nodes. Granted only through an approved access request.
+spec:
+  options:
+    max_session_ttl: 8h
+  allow:
+    logins: [root, ubuntu]
+    node_labels:
+      "*": "*"
+---
+kind: role
+version: v8
+metadata:
+  name: gor-linux-desktop-access
+  description: Linux desktop access. Granted only through an approved access request.
+spec:
+  options:
+    max_session_ttl: 8h
+  allow:
+    linux_desktop_logins: ["{{internal.logins}}"]
+    linux_desktop_labels:
+      "*": "*"

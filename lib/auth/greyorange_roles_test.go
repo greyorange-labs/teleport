@@ -17,14 +17,21 @@
 package auth_test
 
 import (
+	"bytes"
+	"encoding/json"
+	"errors"
+	"io"
+	"os"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	kyaml "k8s.io/apimachinery/pkg/util/yaml"
 
 	"github.com/gravitational/teleport/api/types"
 	"github.com/gravitational/teleport/lib/auth"
 	"github.com/gravitational/teleport/lib/modules"
 	"github.com/gravitational/teleport/lib/modules/modulestest"
+	"github.com/gravitational/teleport/lib/services"
 )
 
 // TestRoleFeatureSupportAccessRequests verifies that the access request role
@@ -63,4 +70,36 @@ func TestRoleFeatureSupportAccessRequests(t *testing.T) {
 		require.Error(t, auth.CheckRoleFeatureSupport(mod, approver))
 		require.Error(t, auth.CheckRoleFeatureSupport(mod, requester))
 	})
+}
+
+// TestGreyOrangePAMRoleExamples verifies that the example PAM roles parse and
+// are accepted by the default modules.
+func TestGreyOrangePAMRoleExamples(t *testing.T) {
+	t.Parallel()
+
+	data, err := os.ReadFile("../../examples/greyorange/pam/roles.yaml")
+	require.NoError(t, err)
+
+	decoder := kyaml.NewYAMLOrJSONDecoder(bytes.NewReader(data), 32*1024)
+	var names []string
+	for {
+		var raw json.RawMessage
+		err := decoder.Decode(&raw)
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		require.NoError(t, err)
+		if len(raw) == 0 || string(raw) == "null" {
+			continue
+		}
+
+		role, err := services.UnmarshalRole(raw)
+		require.NoError(t, err)
+		require.NoError(t, services.ValidateRole(role))
+		require.NoError(t, auth.CheckRoleFeatureSupport(modules.GetModules(), role), role.GetName())
+		names = append(names, role.GetName())
+	}
+
+	require.ElementsMatch(t,
+		[]string{"gor-base", "gor-approver", "gor-node-access", "gor-linux-desktop-access"}, names)
 }
