@@ -82,6 +82,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
 
       - name: Mark workspace as a git safe directory
         run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
@@ -98,11 +100,31 @@ jobs:
             }
           done
 
-      # Limited to the directories that are built here. The integrations are
-      # separate modules with their own formatting.
-      - name: Check Go formatting
+      # Only the Go files changed by this pull request (or push). The gofmt in
+      # the build image formats some upstream files differently from the Go
+      # version the code is written with, so checking the whole tree fails on
+      # code this fork did not touch.
+      - name: Check Go formatting of changed files
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
+          BEFORE_SHA: ${{ github.event.before }}
         run: |
-          unformatted="$(git ls-files 'lib/*.go' 'tool/*.go' 'api/*.go' | xargs gofmt -l)"
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            base="origin/$BASE_REF"
+          elif git cat-file -e "$BEFORE_SHA^{commit}" 2>/dev/null; then
+            base="$BEFORE_SHA"
+          else
+            base="HEAD~1"
+          fi
+          changed="$(git diff --name-only --diff-filter=ACMR "$base"...HEAD -- '*.go' | grep -v '^gen/' || true)"
+          if [ -z "$changed" ]; then
+            echo "No Go files changed."
+            exit 0
+          fi
+          echo "Checking:"
+          echo "$changed"
+          unformatted="$(echo "$changed" | xargs gofmt -l)"
           if [ -n "$unformatted" ]; then
             echo "These files need gofmt:"
             echo "$unformatted"
