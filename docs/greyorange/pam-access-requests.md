@@ -156,8 +156,10 @@ upstream workflows need larger runners and Gravitational credentials, so they ar
 disabled in this fork. The `CI result` job is the single check to require on
 `develop`.
 
-Known issues with the first run:
+Notes:
 
-- The `go.mod` tidy check fails on `e2e/runner/go.mod`, which is untidy upstream.
-- `golangci-lint (api)` crashes with "file requires newer Go version go1.27".
-  This is a tool and toolchain mismatch, not a finding in this code.
+- The `go.mod` tidy check covers only the root and `api` modules. Other modules,
+  for example `e2e/runner`, are untidy upstream and are not checked.
+- The golangci-lint steps are non-blocking (`continue-on-error`). The released
+  linter crashes with "file requires newer Go version go1.27" on this code base.
+  Remove `continue-on-error` once the linter and the Go toolchain agree.
