@@ -52,7 +52,11 @@ import {
 } from 'teleport/Navigation/categories';
 import { ListSessionRecordingsRoute } from 'teleport/SessionRecordings/list/ListSessionRecordingsRoute';
 
-import { LockedAccessRequests } from './AccessRequests';
+import {
+  AccessRequestDetail,
+  AccessRequestsList,
+  NewAccessRequest,
+} from './AccessRequests';
 import { AccountPage } from './Account';
 import { AuditContainer as Audit } from './Audit';
 import { AuthConnectorsContainer as AuthConnectors } from './AuthConnectors';
@@ -103,11 +107,11 @@ class AccessRequests implements TeleportFeature {
     title: 'Access Requests',
     path: cfg.routes.accessRequest,
     exact: true,
-    component: LockedAccessRequests,
+    component: AccessRequestsList,
   };
 
-  hasAccess() {
-    return true;
+  hasAccess(flags: FeatureFlags) {
+    return flags.accessRequests;
   }
 
   navigationItem = {
@@ -119,6 +123,32 @@ class AccessRequests implements TeleportFeature {
     },
     searchableTags: ['access requests'],
   };
+}
+
+class FeatureNewAccessRequest implements TeleportFeature {
+  route = {
+    title: 'New Access Request',
+    path: cfg.routes.newAccessRequest,
+    exact: true,
+    component: NewAccessRequest,
+  };
+
+  hasAccess(flags: FeatureFlags) {
+    return flags.newAccessRequest;
+  }
+}
+
+class FeatureAccessRequestDetail implements TeleportFeature {
+  route = {
+    title: 'Access Request',
+    path: cfg.routes.requests,
+    exact: true,
+    component: AccessRequestDetail,
+  };
+
+  hasAccess(flags: FeatureFlags) {
+    return flags.accessRequests;
+  }
 }
 
 export class FeatureJoinTokens implements TeleportFeature {
@@ -993,6 +1023,8 @@ export function getOSSFeatures(): TeleportFeature[] {
 
     // - Identity
     new AccessRequests(),
+    new FeatureNewAccessRequest(),
+    new FeatureAccessRequestDetail(),
     new FeatureLocks(),
     new FeatureNewLock(),
     new FeatureWorkloadIdentity(),

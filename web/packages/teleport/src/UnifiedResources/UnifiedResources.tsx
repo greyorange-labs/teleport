@@ -71,11 +71,23 @@ import { FeatureFlags } from 'teleport/types';
 import { useUser } from 'teleport/User/UserContext';
 import useStickyClusterId from 'teleport/useStickyClusterId';
 
+import { needsAccessRequest, RequestAccessButton } from './RequestAccessButton';
 import { ResourceActionButton } from './ResourceActionButton';
 import { StatusInfo } from './StatusInfo';
 
 export function UnifiedResources() {
   const { clusterId, isLeafCluster } = useStickyClusterId();
+  const teleCtx = useTeleport();
+
+  // Users with search_as_roles can see, and request, resources that they
+  // cannot access yet.
+  const canRequestResources =
+    teleCtx.getFeatureFlags().newAccessRequest &&
+    teleCtx.storeUser.state.allowedSearchAsRoles.length > 0;
+  const availabilityFilter: ResourceAvailabilityFilter | undefined =
+    canRequestResources
+      ? { canRequestAll: true, mode: 'accessible' }
+      : undefined;
 
   return (
     <FeatureBox px={4}>
@@ -85,6 +97,7 @@ export function UnifiedResources() {
             key={clusterId} // when the current cluster changes, remount the component
             clusterId={clusterId}
             isLeafCluster={isLeafCluster}
+            availabilityFilter={availabilityFilter}
           />
         </SamlAppActionProvider>
       </ResizingResourceWrapper>
@@ -364,10 +377,13 @@ export function ClusterResources({
         resources={resources.map(resource => ({
           resource,
           ui: {
-            ActionButton: getActionButton?.(
-              resource,
-              params.includedResourceMode
-            ) || <ResourceActionButton resource={resource} />,
+            ActionButton:
+              getActionButton?.(resource, params.includedResourceMode) ||
+              (needsAccessRequest(resource) ? (
+                <RequestAccessButton resource={resource} />
+              ) : (
+                <ResourceActionButton resource={resource} />
+              )),
           },
         }))}
         setParams={setParams}

@@ -194,6 +194,7 @@ const ossRoutes = {
   locks: '/web/locks',
   newLock: '/web/locks/new',
   requests: '/web/requests/:requestId?',
+  newAccessRequest: '/web/accessrequest/new',
 
   downloadCenter: '/web/downloads',
   managedUpdates: '/web/managedupdates',
@@ -580,6 +581,13 @@ const cfg = {
 
     // Assist needs some access request info to exist in OSS
     accessRequestPath: '/v1/enterprise/accessrequest/:requestId?',
+
+    // Access request workflow served by the open source proxy.
+    accessRequestsPath:
+      '/v1/webapi/sites/:clusterId/accessrequests/:requestId?',
+    accessRequestReviewPath:
+      '/v1/webapi/sites/:clusterId/accessrequests/:requestId/review',
+    accessCapabilitiesPath: '/v1/webapi/sites/:clusterId/accesscapabilities',
 
     accessGraphFeatures: '/v1/enterprise/accessgraph/static/features.json',
 
@@ -1800,6 +1808,21 @@ const cfg = {
 
   getAccessRequestUrl(requestId?: string) {
     return generatePath(cfg.api.accessRequestPath, { requestId });
+  },
+
+  getAccessRequestsUrl(clusterId: string, requestId?: string) {
+    return generatePath(cfg.api.accessRequestsPath, { clusterId, requestId });
+  },
+
+  getAccessRequestReviewUrl(clusterId: string, requestId: string) {
+    return generatePath(cfg.api.accessRequestReviewPath, {
+      clusterId,
+      requestId,
+    });
+  },
+
+  getAccessCapabilitiesUrl(clusterId: string) {
+    return generatePath(cfg.api.accessCapabilitiesPath, { clusterId });
   },
 
   getAccessRequestRoute(requestId?: string) {

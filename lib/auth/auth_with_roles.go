@@ -5850,7 +5850,7 @@ func checkRoleFeatureSupport(mod modules.Modules, role types.Role) error {
 	case !features.AdvancedAccessWorkflows && !allowRev.IsZero():
 		return trace.AccessDenied(
 			"role field allow.review_requests is only available in enterprise subscriptions")
-	case mod.BuildType() != modules.BuildEnterprise && len(allowReq.SearchAsRoles) != 0:
+	case mod.BuildType() != modules.BuildEnterprise && !features.AdvancedAccessWorkflows && len(allowReq.SearchAsRoles) != 0:
 		return trace.AccessDenied(
 			"role field allow.search_as_roles is only available in enterprise subscriptions")
 	default:
