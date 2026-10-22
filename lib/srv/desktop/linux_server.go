@@ -26,7 +26,6 @@ import (
 	"maps"
 	"net"
 	"os"
-	"os/user"
 	"regexp"
 	"slices"
 	"strconv"
@@ -65,6 +64,7 @@ import (
 	"github.com/gravitational/teleport/lib/tlsca"
 	"github.com/gravitational/teleport/lib/utils"
 	logutils "github.com/gravitational/teleport/lib/utils/log"
+	hostuser "github.com/gravitational/teleport/session/host/user"
 	"github.com/gravitational/teleport/session/reexec"
 )
 
@@ -221,7 +221,6 @@ func NewLinuxService(cfg LinuxServiceConfig) (*LinuxService, error) {
 func (s *LinuxService) startServiceHeartbeat() error {
 	heartbeat, err := srv.NewLinuxDesktopHeartbeat(srv.HeartbeatV2Config[*linuxdesktopv1pb.LinuxDesktop]{
 		InventoryHandle: s.cfg.InventoryHandle,
-		Announcer:       s.cfg.AccessPoint,
 		GetResource: func(ctx context.Context) (*linuxdesktopv1pb.LinuxDesktop, error) {
 			desktop, err := linuxdesktopv1.NewLinuxDesktop(s.cfg.Heartbeat.HostUUID, linuxdesktopv1pb.LinuxDesktopSpec_builder{
 				Addr:     s.cfg.Heartbeat.PublicAddr,
@@ -563,7 +562,7 @@ func (sess *linuxSession) startMonitor() error {
 		EmitterContext:        s.closeCtx,
 		LockWatcher:           s.cfg.LockWatcher,
 		LockingMode:           sess.authCtx.Checker.LockingMode(sess.authPref.GetLockingMode()),
-		LockTargets:           append(services.LockTargetsFromTLSIdentity(sess.identity), types.LockTarget{LinuxDesktop: sess.desktop.GetMetadata().GetName()}),
+		LockTargets:           slices.AppendSeq([]types.LockTarget{{LinuxDesktop: sess.desktop.GetMetadata().GetName()}}, services.LockTargetsFromTLSIdentity(sess.identity)),
 		Tracker:               &sess.track,
 		TeleportUser:          sess.identity.Username,
 		UserOriginClusterName: sess.identity.OriginClusterName,
@@ -749,11 +748,11 @@ func (sess *linuxSession) handleClientHello(m *tdpb.ClientHello) error {
 }
 
 func (sess *linuxSession) changeAuthorityFileOwnership(m *tdpb.ClientHello) error {
-	currentUser, err := user.Current()
+	currentUser, err := hostuser.Current()
 	if err != nil {
 		return trace.Wrap(err, "failed to get current user")
 	}
-	targetUser, err := user.Lookup(m.Username)
+	targetUser, err := hostuser.Lookup(m.Username)
 	if err != nil {
 		return trace.Wrap(err, "failed to lookup user %s", m.Username)
 	}
@@ -898,7 +897,9 @@ func (sess *linuxSession) innerProcessScreenChanges() (int, error) {
 			return 0, trace.Wrap(err, "couldn't get image from backend")
 		}
 
+		//nolint:staticcheck // TODO(rhammonds): Eventually we'll remove the stubbed out qoiz encoder and restore linting
 		frames, err := rdpclient.EncodeQOIZ(img.Pix, uint16(change.X), uint16(change.Y), change.Width, change.Height)
+		//nolint:staticcheck // TODO(rhammonds): Eventually we'll remove the stubbed out qoiz encoder and restore linting
 		if err != nil {
 			return 0, trace.Wrap(err, "couldn't encode image frame")
 		}
@@ -939,6 +940,7 @@ func (s *LinuxService) trackSession(ctx context.Context, id *tlsca.Identity, lin
 		Kind:        string(types.LinuxDesktopSessionKind),
 		State:       types.SessionState_SessionStateRunning,
 		Hostname:    s.cfg.Hostname,
+		DesktopName: s.cfg.Hostname,
 		Address:     s.cfg.Heartbeat.HostUUID,
 		ClusterName: s.clusterName,
 		Login:       linuxUser,

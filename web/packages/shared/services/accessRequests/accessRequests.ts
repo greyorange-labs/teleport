@@ -33,6 +33,11 @@ export enum RequestKind {
   LongTerm = 2,
 }
 
+export type UserDisplay = {
+  primary?: string;
+  secondary?: string;
+};
+
 /**
  * LongTermResourceGrouping contains information about how resources can be grouped
  * for long-term Access Requests.
@@ -64,6 +69,7 @@ export interface AccessRequest {
   id: string;
   state: RequestState;
   user: string;
+  userDisplay?: UserDisplay;
   expires: Date;
   expiresDuration: string;
   created: Date;
@@ -92,6 +98,7 @@ export interface AccessRequest {
 
 export interface AccessRequestReview {
   author: string;
+  authorDisplay?: UserDisplay;
   roles: string[];
   state: RequestState;
   reason: string;
@@ -102,6 +109,7 @@ export interface AccessRequestReview {
 
 export interface AccessRequestReviewer {
   name: string;
+  display?: UserDisplay;
   state: RequestState;
 }
 
@@ -129,7 +137,7 @@ export type ResourceId = {
 };
 
 // ResourceDetails holds optional details for a resource.
-export type ResourceDetails = {
+type ResourceDetails = {
   // hostname is the resource hostname.
   // TODO(mdwn): Remove hostname as it's no longer used.
   hostname?: string;

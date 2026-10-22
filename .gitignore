@@ -140,3 +140,7 @@ unit-tests*.json
 /teleport-agent.yaml
 /teleport-data/
 /teleport
+
+# Local Claude config, except shared skills
+.claude/*
+!.claude/skills

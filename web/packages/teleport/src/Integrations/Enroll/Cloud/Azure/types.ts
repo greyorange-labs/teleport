@@ -18,7 +18,7 @@
 
 import { AzureRegion } from 'teleport/services/integrations';
 
-export type ServiceType = 'vm';
+type ServiceType = 'vm';
 
 export type ServiceConfig = {
   enabled: boolean;
@@ -36,7 +36,11 @@ export type AzureTag = {
   value: string;
 };
 
+type AzureScope = 'managementGroup' | 'subscription';
+
 export type AzureManagedIdentity = {
   region: AzureRegion;
   resourceGroup: string;
+  scope: AzureScope;
+  managementGroupId?: string;
 };

@@ -29,6 +29,7 @@ import { MenuLoginWithActionMenu } from 'shared/components/MenuLoginWithActionMe
 import { AppSubKind } from 'shared/services';
 import { AwsRole } from 'shared/services/apps';
 
+import { LLMAppConnectDialog } from 'teleport/Apps/LLMAppConnectDialog';
 import { MCPAppConnectDialog } from 'teleport/Apps/MCPAppConnectDialog';
 import { TcpAppConnectDialog } from 'teleport/Apps/TcpAppConnectDialog';
 import cfg from 'teleport/config';
@@ -179,6 +180,7 @@ const AppLaunch = ({ app }: AppLaunchProps) => {
     publicAddr,
     isCloud,
     isTcp,
+    isLLM,
     samlApp,
     samlAppSsoUrl,
     samlAppPreset,
@@ -194,14 +196,12 @@ const AppLaunch = ({ app }: AppLaunchProps) => {
       ps => !ps.requiresRequest
     );
     if (isAwsIdentityCenterApp) {
-      awsConsoleOrIdentityCenterRoles = permissionSets.map(
-        (ps): AwsRole => ({
-          name: ps.name,
-          arn: ps.name,
-          display: ps.name,
-          accountId: name,
-        })
-      );
+      awsConsoleOrIdentityCenterRoles = permissionSets.map((ps): AwsRole => ({
+        name: ps.name,
+        arn: ps.name,
+        display: ps.name,
+        accountId: name,
+      }));
     }
     function getAwsLaunchUrl(arnOrPermSetName: string) {
       if (isAwsIdentityCenterApp) {
@@ -240,6 +240,9 @@ const AppLaunch = ({ app }: AppLaunchProps) => {
   }
   if (subKind === AppSubKind.MCP) {
     return <MCPAppConnect app={app} />;
+  }
+  if (isLLM) {
+    return <LLMAppConnect app={app} />;
   }
   if (isTcp) {
     return <TcpAppConnect app={app} />;
@@ -421,6 +424,28 @@ function TcpAppConnect({ app }: { app: App }) {
         Connect
       </ButtonBorder>
       {open && <TcpAppConnectDialog app={app} onClose={() => setOpen(false)} />}
+    </>
+  );
+}
+
+/**
+ * LLMAppConnect is the button on an LLM inference endpoint app resource that
+ * opens the LLM connect dialog.
+ */
+function LLMAppConnect({ app }: { app: App }) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <>
+      <ButtonBorder
+        textTransform="none"
+        width="123px"
+        size="small"
+        onClick={() => setOpen(true)}
+      >
+        Connect
+      </ButtonBorder>
+      {open && <LLMAppConnectDialog app={app} onClose={() => setOpen(false)} />}
     </>
   );
 }

@@ -40,8 +40,12 @@ import (
 	"github.com/gravitational/teleport/lib/utils"
 )
 
-// AsyncBufferSize is a default buffer size for async emitters
-const AsyncBufferSize = 1024
+const (
+	// AsyncBufferSize is a default buffer size for async emitters
+	AsyncBufferSize = 1024
+	// auditQueueDir is the directory where the audit queue resides.
+	auditQueueDir = "audit-queue"
+)
 
 // AsyncEmitterConfig provides parameters for emitter
 type AsyncEmitterConfig struct {
@@ -52,9 +56,13 @@ type AsyncEmitterConfig struct {
 	// DataDir is the Teleport data directory. This is required for sqlite
 	// backed queues.
 	DataDir string
-	// EnableSQLiteQueue enables the SQLite-backed audit queue. When false,
+	// EnableAuditQueue enables the audit queue subsystem. When false,
 	// the legacy in-memory channel is used.
-	EnableSQLiteQueue bool
+	EnableAuditQueue bool
+	// AuditQueueCfg holds the options from the Teleport yaml config.
+	AuditQueueCfg auditqueue.Config
+	// AuditQueueBackends is the ordered list of backends to try on startup.
+	AuditQueueBackends []auditqueue.Kind
 }
 
 // CheckAndSetDefaults checks and sets default values
@@ -77,26 +85,32 @@ func NewAsyncEmitter(cfg AsyncEmitterConfig) (*AsyncEmitter, error) {
 	}
 
 	var queue auditqueue.Queue
-	if cfg.EnableSQLiteQueue {
+	if cfg.EnableAuditQueue {
 		var err error
-		queue, err = makeQueue(cfg.DataDir)
+		queue, err = makeQueue(cfg.DataDir, cfg.AuditQueueCfg, cfg.AuditQueueBackends)
 		if err != nil {
 			return nil, trace.Wrap(err)
 		}
 	}
 	if queue == nil {
-		slog.InfoContext(context.TODO(), "Using default in-memory audit event channel. SQLite-backed audit queue is disabled.")
+		slog.InfoContext(context.TODO(), "Using default in-memory audit event channel. Audit queue is disabled.")
 	} else {
-		slog.InfoContext(context.TODO(), "SQLite-backed audit queue is enabled.")
+		slog.InfoContext(context.TODO(), "Audit queue is enabled.")
+	}
+
+	deliveryTimeout := cfg.AuditQueueCfg.DeliveryTimeout
+	if deliveryTimeout <= 0 {
+		deliveryTimeout = auditqueue.DefaultDeliveryTimeout
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	a := &AsyncEmitter{
-		cancel:   cancel,
-		ctx:      ctx,
-		eventsCh: make(chan apievents.AuditEvent, cfg.BufferSize),
-		cfg:      cfg,
-		queue:    queue,
+		cancel:          cancel,
+		ctx:             ctx,
+		eventsCh:        make(chan apievents.AuditEvent, cfg.BufferSize),
+		cfg:             cfg,
+		queue:           queue,
+		deliveryTimeout: deliveryTimeout,
 	}
 	if queue != nil {
 		a.wg.Go(func() {
@@ -111,28 +125,45 @@ func NewAsyncEmitter(cfg AsyncEmitterConfig) (*AsyncEmitter, error) {
 	return a, nil
 }
 
-func makeQueue(dataDir string) (auditqueue.Queue, error) {
-	queuePath := filepath.Join(dataDir, "audit-queue", uuid.NewString())
-	queueCfg := auditqueue.Config{
-		Path: queuePath,
-	}
-	queue, err := auditqueue.New(auditqueue.KindSQLite, queueCfg)
-	if err != nil {
-		return nil, trace.Wrap(err)
+func makeQueue(dataDir string, queueCfg auditqueue.Config, backends []auditqueue.Kind) (auditqueue.Queue, error) {
+	queueCfg.Path = filepath.Join(dataDir, auditQueueDir, uuid.NewString())
+
+	if len(backends) == 0 {
+		backends = []auditqueue.Kind{auditqueue.KindSQLiteDisk}
 	}
 
-	return queue, nil
+	var lastErr error
+	for i, backend := range backends {
+		q, err := auditqueue.New(backend, queueCfg)
+		if err == nil {
+			if i > 0 {
+				slog.WarnContext(context.TODO(),
+					"Using fallback audit queue backend.",
+					"backend", backend,
+				)
+			}
+			return q, nil
+		}
+		slog.WarnContext(context.TODO(),
+			"Failed to create audit queue backend, trying next.",
+			"backend", backend,
+			"error", err,
+		)
+		lastErr = err
+	}
+	return nil, trace.Wrap(lastErr)
 }
 
 // AsyncEmitter accepts events to a buffered channel and emits
 // events in a separate goroutine without blocking the caller.
 type AsyncEmitter struct {
-	cfg      AsyncEmitterConfig
-	eventsCh chan apievents.AuditEvent
-	cancel   context.CancelFunc
-	ctx      context.Context
-	queue    auditqueue.Queue
-	wg       sync.WaitGroup
+	cfg             AsyncEmitterConfig
+	eventsCh        chan apievents.AuditEvent
+	cancel          context.CancelFunc
+	ctx             context.Context
+	queue           auditqueue.Queue
+	deliveryTimeout time.Duration
+	wg              sync.WaitGroup
 }
 
 // Close closes emitter and cancels all in flight events.
@@ -143,6 +174,31 @@ func (a *AsyncEmitter) Close() error {
 		return trace.Wrap(a.queue.Close())
 	}
 	return nil
+}
+
+// Shutdown makes a best effort attempt to flush pending audit events to the
+// inner emitter before closing.
+func (a *AsyncEmitter) Shutdown(ctx context.Context) error {
+	if a.queue != nil {
+		if err := a.queue.Drain(ctx); err != nil {
+			slog.WarnContext(ctx,
+				"Audit queue drain returned an error during graceful shutdown.",
+				"error", err,
+			)
+		}
+		return trace.Wrap(a.Close())
+	}
+
+	return trace.Wrap(a.Close())
+}
+
+// Stats reports the current depth of the audit queue. It returns a zero Stats
+// when the audit queue is disabled.
+func (a *AsyncEmitter) Stats(ctx context.Context) (auditqueue.Stats, error) {
+	if a.queue == nil {
+		return auditqueue.Stats{}, nil
+	}
+	return a.queue.Stats(ctx)
 }
 
 func (a *AsyncEmitter) forward() {
@@ -168,21 +224,35 @@ func (a *AsyncEmitter) forward() {
 func (a *AsyncEmitter) deliver(ctx context.Context, items []auditqueue.Item) []auditqueue.Item {
 	var successfullyDelivered []auditqueue.Item
 
+	ctx, cancel := context.WithTimeout(ctx, a.deliveryTimeout)
+	defer cancel()
+
 	// TODO(kkloberdanz): We plan to update the Emitter interface such that
 	// EmitAuditEvent will take a slice of events rather than a single event at
 	// a time. This will allow us to add batching as a native feature of this
 	// interface. I suspect that having first-class batching will have a greater
 	// improvement on performance over parallelism alone. It will also have less
 	// overhead than parallelism over multiple events.
+	var failed int
+	var firstErr error
 	for _, item := range items {
 		if ctx.Err() != nil {
-			return successfullyDelivered
+			break
 		}
 		if err := a.cfg.Inner.EmitAuditEvent(ctx, item.Event); err != nil {
-			slog.ErrorContext(ctx, "Failed to emit audit event.", "error", err)
+			failed++
+			if firstErr == nil {
+				firstErr = err
+			}
 			continue
 		}
 		successfullyDelivered = append(successfullyDelivered, item)
+	}
+	if failed > 0 && ctx.Err() == nil {
+		slog.ErrorContext(ctx, "Failed to emit audit events.",
+			"count", failed,
+			"error", firstErr,
+		)
 	}
 	return successfullyDelivered
 }
@@ -308,6 +378,18 @@ func NewCheckingAsyncEmitter(checkingCfg CheckingEmitterConfig, asyncCfg AsyncEm
 // Close closes the underlying AsyncEmitter.
 func (c *CheckingAsyncEmitter) Close() error {
 	return c.asyncEmitter.Close()
+}
+
+// Shutdown attempts to drain the underlying AsyncEmitter before closing.
+// See AsyncEmitter.Shutdown.
+func (c *CheckingAsyncEmitter) Shutdown(ctx context.Context) error {
+	return c.asyncEmitter.Shutdown(ctx)
+}
+
+// Stats reports the current depth of the underlying audit queue.
+// See AsyncEmitter.Stats.
+func (c *CheckingAsyncEmitter) Stats(ctx context.Context) (auditqueue.Stats, error) {
+	return c.asyncEmitter.Stats(ctx)
 }
 
 // checkAndSetEventFields updates passed event fields with additional information

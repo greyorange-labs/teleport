@@ -58,6 +58,40 @@ export function removeUnknowns(
   return fixtures.filter(r => r.code in formatters);
 }
 
+export interface FixtureTypeMismatch {
+  code: string;
+  fixtureType: string;
+  formatterType: string;
+}
+
+// fixtureTypeMismatches detects event fixtures with the same code as a
+// formatter, but with a different event type. This prevents incorrect example
+// fixtures from making it into the documentation.
+export function fixtureTypeMismatches(
+  fixtures: Event[],
+  formatters: Formatters
+): FixtureTypeMismatch[] {
+  const formatterCodesToTypes: Map<string, string> = new Map();
+  for (const code in formatters) {
+    const f = formatters[code];
+    formatterCodesToTypes.set(code, f.type);
+  }
+
+  let result: FixtureTypeMismatch[] = [];
+  fixtures.forEach(f => {
+    // Find matching codes with mismatched types
+    const formatterType = formatterCodesToTypes.get(f.code);
+    if (formatterType && f.raw.event !== formatterType) {
+      result.push({
+        code: f.code,
+        formatterType: formatterType,
+        fixtureType: f.raw.event,
+      });
+    }
+  });
+  return result;
+}
+
 // exampleOrAttributes returns a string to include in a reference entry for an
 // audit event that describes the event's attributes.
 //
@@ -65,7 +99,7 @@ export function removeUnknowns(
 // events with full examples include additional fields in the raw object. If
 // there is an example available for the event, we include the example,
 // formatted as JSON. Otherwise, we print only the event code and type.
-export function exampleOrAttributes(event: ReferencePageEventData): string {
+function exampleOrAttributes(event: ReferencePageEventData): string {
   if (Object.keys(event.raw).length > 1) {
     return `Example:
 
@@ -96,9 +130,7 @@ ${exampleOrAttributes(event)}
 //
 // See web/packages/teleport/src/Audit/fixtures/index.ts for the structure of an
 // audit event test fixture.
-export function createMultipleEventsSection(
-  events: ReferencePageEventData[]
-): string {
+function createMultipleEventsSection(events: ReferencePageEventData[]): string {
   return events.reduce(
     (accum, event) => {
       return (

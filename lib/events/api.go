@@ -60,6 +60,8 @@ const (
 	EventProtocolTDP = apievents.EventProtocolTDP
 	// EventProtocolDB specifies database as a type of captured protocol
 	EventProtocolDB = apievents.EventProtocolDB
+	// EventProtocolApp specifies app as a type of captured protocol
+	EventProtocolApp = apievents.EventProtocolApp
 	// LocalAddr is a target address on the host
 	LocalAddr = "addr.local"
 	// RemoteAddr is a client (user's) address
@@ -429,6 +431,10 @@ const (
 	// AppSessionRequestEvent is an HTTP request and response.
 	AppSessionRequestEvent = "app.session.request"
 
+	// AppSessionTargetDialDeniedEvent is emitted when an application target
+	// dial is denied by app_service target host restrictions.
+	AppSessionTargetDialDeniedEvent = "app.session.target.dial.denied"
+
 	// AppSessionDynamoDBRequestEvent is emitted when DynamoDB client sends
 	// a request via app access session.
 	AppSessionDynamoDBRequestEvent = "app.session.dynamodb.request"
@@ -439,6 +445,11 @@ const (
 	// AppSessionLLMRequestFailureEvent is emitted when an LLM inference request
 	// is sent and fails.
 	AppSessionLLMRequestFailureEvent = "app.session.llm.request.failure"
+
+	// AppSessionRequestDeniedEvent is emitted when the app agent denies a
+	// plain HTTP app request under fine-grained access rules.
+	AppSessionRequestDeniedEvent = "app.session.request.denied"
+
 	// AppSessionHTTPRequestEvent is emitted when a proxied HTTP request is received.
 	AppSessionHTTPRequestEvent = "http.request"
 	// AppSessionHTTPRequestBodyChunkEvent is emitted for each chunk of a proxied HTTP request body.
@@ -703,6 +714,19 @@ const (
 	// A confirmed web authentication means the WebSession itself now holds
 	// augmented TLS and SSH certificates.
 	DeviceAuthenticateConfirmEvent = "device.authenticate.confirm"
+	// DeviceEnrollPairingRequestEvent is emitted when a device presents an enroll
+	// pairing token to request enrollment. On success the pairing transitions to
+	// awaiting approval. It is also emitted on failure (e.g. an invalid token),
+	// before any transition, in which case there is no associated user.
+	DeviceEnrollPairingRequestEvent = "device.enroll_pairing.request"
+	// DeviceEnrollPairingApproveEvent is emitted when the user approves an enroll
+	// pairing in the Web UI, which lets the device retrieve its enrollment token.
+	// It is also emitted on a failed approval attempt, for example one arriving
+	// after the pairing expired or was already approved.
+	DeviceEnrollPairingApproveEvent = "device.enroll_pairing.approve"
+	// DeviceEnrollPairingDenyEvent is emitted when the user denies an enroll
+	// pairing in the Web UI.
+	DeviceEnrollPairingDenyEvent = "device.enroll_pairing.deny"
 
 	// BotJoinEvent is emitted when a bot joins
 	BotJoinEvent = "bot.join"
@@ -1004,22 +1028,6 @@ const (
 
 	// ClientIPRestrictionsUpdateEvent is emitted when a Client IP Restriction list is updated.
 	ClientIPRestrictionsUpdateEvent = "cir.update"
-
-	// AppAuthConfigCreateEvent is emitted when an app auth config
-	// resource is created.
-	AppAuthConfigCreateEvent = "app_auth_config.create"
-	// AppAuthConfigUpdateEvent is emitted when an app auth config
-	// resource is updated.
-	AppAuthConfigUpdateEvent = "app_auth_config.update"
-	// AppAuthConfigDeleteEvent is emitted when an app auth config
-	// resource is deleted.
-	AppAuthConfigDeleteEvent = "app_auth_config.delete"
-	// AppAuthConfigVerifySuccessEvent is emitted when an app auth verification
-	// succeeds.
-	AppAuthConfigVerifySuccessEvent = "app_auth_config.verify.success"
-	// AppAuthConfigVerifyFailureEvent is emitted when an app auth verification
-	// fails.
-	AppAuthConfigVerifyFailureEvent = "app_auth_config.verify.failure"
 
 	// VnetConfigCreateEvent is emitted when a Vnet config resource is created.
 	VnetConfigCreateEvent = "vnet.config.create"
@@ -1337,6 +1345,11 @@ type SearchEventsRequest struct {
 	StartKey string
 	// Search is an optional search query to filter events.
 	Search string
+	// BeamID optionally restricts results to events attributed to the given
+	// beam (matched against the event's user metadata beam_id). This filter is
+	// only supported by the Athena audit backend; other backends return a
+	// trace.NotImplemented error when it is set.
+	BeamID string
 }
 
 type SearchSessionEventsRequest struct {

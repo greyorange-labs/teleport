@@ -789,6 +789,31 @@ func (m *AppSessionRequest) TrimToMaxSize(maxSize int) AuditEvent {
 	return out
 }
 
+func (m *AppSessionTargetDialDenied) TrimToMaxSize(maxSize int) AuditEvent {
+	size := m.Size()
+	if size <= maxSize {
+		return m
+	}
+
+	out := utils.CloneProtoMsg(m)
+	out.TargetHost = ""
+	out.ResolvedIPs = nil
+	out.BlockedIP = ""
+	out.BlockedPrefix = ""
+
+	maxSize = adjustedMaxSize(out, maxSize)
+
+	customFieldsCount := nonEmptyStrs(m.TargetHost, m.BlockedIP, m.BlockedPrefix) + nonEmptyStrsInSlice(m.ResolvedIPs)
+	maxFieldsSize := maxSizePerField(maxSize, customFieldsCount)
+
+	out.TargetHost = trimStr(m.TargetHost, maxFieldsSize)
+	out.ResolvedIPs = trimStrSlice(m.ResolvedIPs, maxFieldsSize)
+	out.BlockedIP = trimStr(m.BlockedIP, maxFieldsSize)
+	out.BlockedPrefix = trimStr(m.BlockedPrefix, maxFieldsSize)
+
+	return out
+}
+
 func (m *AppSessionDynamoDBRequest) TrimToMaxSize(maxSize int) AuditEvent {
 	size := m.Size()
 	if size <= maxSize {
@@ -2876,26 +2901,6 @@ func (m *ClientIPRestrictionsUpdate) TrimToMaxSize(int) AuditEvent {
 	return m
 }
 
-func (m *AppAuthConfigCreate) TrimToMaxSize(int) AuditEvent {
-	return m
-}
-
-func (m *AppAuthConfigUpdate) TrimToMaxSize(int) AuditEvent {
-	return m
-}
-
-func (m *AppAuthConfigDelete) TrimToMaxSize(int) AuditEvent {
-	return m
-}
-
-func (m *AppAuthConfigVerify) TrimToMaxSize(maxSize int) AuditEvent {
-	return trimEventToMaxSize(m, maxSize, func(m, out *AppAuthConfigVerify) fieldTrimmer {
-		return fieldTrimmers{
-			newGenericTrimmer(&m.Status, &out.Status),
-		}
-	})
-}
-
 func (m *VnetConfigCreate) TrimToMaxSize(int) AuditEvent {
 	return m
 }
@@ -3062,6 +3067,15 @@ func (m *AppSessionHTTPResponse) TrimToMaxSize(maxSize int) AuditEvent {
 func (m *AppSessionHTTPResponseBodyChunk) TrimToMaxSize(maxSize int) AuditEvent {
 	return trimEventToMaxSize(m, maxSize, func(m, out *AppSessionHTTPResponseBodyChunk) fieldTrimmer {
 		return newBytesTrimmer(m.Data, &out.Data)
+	})
+}
+
+func (m *AppSessionRequestDenied) TrimToMaxSize(maxSize int) AuditEvent {
+	return trimEventToMaxSize(m, maxSize, func(m, out *AppSessionRequestDenied) fieldTrimmer {
+		return fieldTrimmers{
+			newStrTrimmer(m.Method, &out.Method),
+			newStrTrimmer(m.Path, &out.Path),
+		}
 	})
 }
 

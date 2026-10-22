@@ -193,6 +193,8 @@ func FromEventFields(fields EventFields) (events.AuditEvent, error) {
 		e = &events.AppSessionChunk{}
 	case AppSessionRequestEvent:
 		e = &events.AppSessionRequest{}
+	case AppSessionTargetDialDeniedEvent:
+		e = &events.AppSessionTargetDialDenied{}
 	case AppSessionDynamoDBRequestEvent:
 		e = &events.AppSessionDynamoDBRequest{}
 	case AppSessionLLMRequestSuccessEvent, AppSessionLLMRequestFailureEvent:
@@ -205,6 +207,8 @@ func FromEventFields(fields EventFields) (events.AuditEvent, error) {
 		e = &events.AppSessionHTTPResponse{}
 	case AppSessionHTTPResponseBodyChunkEvent:
 		e = &events.AppSessionHTTPResponseBodyChunk{}
+	case AppSessionRequestDeniedEvent:
+		e = &events.AppSessionRequestDenied{}
 	case AppCreateEvent:
 		e = &events.AppCreate{}
 	case AppUpdateEvent:
@@ -294,7 +298,10 @@ func FromEventFields(fields EventFields) (events.AuditEvent, error) {
 		DeviceAuthenticateEvent,
 		DeviceEnrollTokenCreateEvent,
 		DeviceWebTokenCreateEvent,
-		DeviceAuthenticateConfirmEvent:
+		DeviceAuthenticateConfirmEvent,
+		DeviceEnrollPairingRequestEvent,
+		DeviceEnrollPairingApproveEvent,
+		DeviceEnrollPairingDenyEvent:
 		e = &events.DeviceEvent2{}
 	case LockCreatedEvent:
 		e = &events.LockCreate{}
@@ -597,16 +604,6 @@ func FromEventFields(fields EventFields) (events.AuditEvent, error) {
 	case ClientIPRestrictionsUpdateEvent:
 		e = &events.ClientIPRestrictionsUpdate{}
 
-	case AppAuthConfigCreateEvent:
-		e = &events.AppAuthConfigCreate{}
-	case AppAuthConfigUpdateEvent:
-		e = &events.AppAuthConfigUpdate{}
-	case AppAuthConfigDeleteEvent:
-		e = &events.AppAuthConfigDelete{}
-	case AppAuthConfigVerifySuccessCode:
-		e = &events.AppAuthConfigVerify{}
-	case AppAuthConfigVerifyFailureEvent:
-		e = &events.AppAuthConfigVerify{}
 	case VnetConfigCreateEvent:
 		e = &events.VnetConfigCreate{}
 	case VnetConfigUpdateEvent:

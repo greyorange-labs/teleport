@@ -26,8 +26,13 @@ import (
 
 	"github.com/gravitational/trace"
 
+	apidefaults "github.com/gravitational/teleport/api/defaults"
 	apievents "github.com/gravitational/teleport/api/types/events"
 )
+
+// DefaultDeliveryTimeout is the default bound on a single invocation of the
+// delivery handler over one batch of events.
+const DefaultDeliveryTimeout = apidefaults.DefaultIOTimeout
 
 var (
 	// ErrQueueFull is returned by Enqueue when the queue has no room for more
@@ -46,8 +51,23 @@ var (
 type Kind string
 
 const (
-	// KindSQLite selects the SQLite-backed implementation.
-	KindSQLite Kind = "sqlite"
+	// KindSQLiteDisk selects the SQLite-backed on-disk implementation.
+	KindSQLiteDisk Kind = "sqlite_disk"
+	// KindSQLiteMemory selects the SQLite-backed in-memory implementation.
+	KindSQLiteMemory Kind = "sqlite_memory"
+)
+
+// SynchronousMode controls the SQLite synchronous pragma.
+type SynchronousMode string
+
+const (
+	// SynchronousNormal commits are durable against OS crashes but not against
+	// power loss mid-write. This is the default for SQLite and is safe for most
+	// use cases in WAL mode.
+	SynchronousNormal SynchronousMode = "NORMAL"
+	// SynchronousFull syncs to disk before each commit, providing full
+	// durability at the cost of higher write latency.
+	SynchronousFull SynchronousMode = "FULL"
 )
 
 // Config configures a Queue.
@@ -57,17 +77,50 @@ type Config struct {
 	// OrphanScanInterval is how often the queue scans for orphaned audit log
 	// queues.
 	OrphanScanInterval time.Duration
-	// MaxBytes sets the maximum database file size
+	// MaxBytes sets the maximum database size
 	MaxBytes int64
 	// SoftLimit is the size of the audit log queue at which we start logging
 	// warning messages.
 	SoftLimit int64
+	// MaxAttempts is the number of delivery failures before an event is moved
+	// to the dead-letter queue. Defaults to 3 if unset.
+	MaxAttempts int
+	// DeliveryTimeout bounds a single invocation of the delivery handler over
+	// one batch of events. Defaults to DefaultDeliveryTimeout if unset.
+	DeliveryTimeout time.Duration
+	// DeadLetterSweepInterval is how often the dead-letter sweeper re-attempts
+	// delivery of failed events.
+	DeadLetterSweepInterval time.Duration
+	// DeadLetterTTL is the maximum age of a dead-letter event before it is
+	// permanently deleted.
+	DeadLetterTTL time.Duration
+	// Synchronous controls the SQLite synchronous pragma.
+	Synchronous    SynchronousMode
+	StatsInterval  time.Duration
+	OnStatsUpdated func()
 }
 
 // Item is an event yielded to a Handler.
 type Item struct {
 	id    int64
 	Event apievents.AuditEvent
+}
+
+// Stats reports the current depth of a Queue.
+type Stats struct {
+	// PendingCount is the number of events waiting in the main queue.
+	PendingCount int64
+	// DeadLetterCount is the number of events in the dead-letter queue.
+	DeadLetterCount int64
+	// CorruptCount is the number of events quarantined because their payloads
+	// failed to deserialize.
+	CorruptCount int64
+	// OldestPendingTime is when the oldest event in the main queue was
+	// enqueued. Zero when the main queue is empty.
+	OldestPendingTime time.Time
+	// OldestDeadLetterTime is when the oldest event in the dead-letter queue
+	// failed. Zero when the dead-letter queue is empty.
+	OldestDeadLetterTime time.Time
 }
 
 // Handler is the function type that the caller of the auditqueue implements.
@@ -86,6 +139,15 @@ type Queue interface {
 	// Run is the single consumer that drains the queue and forwards the audit
 	// log events to `handler`.
 	Run(ctx context.Context, handler Handler) error
+	// Drain blocks until the queue is drained. It makes a best-effort attempt
+	// to forward all pending events to the consumer before shutdown. It stops
+	// adopting new orphans and waits for both the main queue and the
+	// dead-letter queue to empty or for ctx to be done, whichever comes first.
+	// Callers must still call Close.
+	Drain(ctx context.Context) error
+	// Stats reports the current depth of the queue (pending and dead-letter
+	// counts).
+	Stats(ctx context.Context) (Stats, error)
 	// Close releases resources held by the queue.
 	Close() error
 }
@@ -93,8 +155,10 @@ type Queue interface {
 // New constructs a Queue of the given kind.
 func New(kind Kind, cfg Config) (Queue, error) {
 	switch kind {
-	case KindSQLite:
+	case KindSQLiteDisk:
 		return newSQLiteQueue(cfg)
+	case KindSQLiteMemory:
+		return newSQLiteInMemoryQueue(cfg)
 	default:
 		return nil, trace.BadParameter("unknown audit queue kind: '%s'", kind)
 	}
