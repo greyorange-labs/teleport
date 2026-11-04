@@ -2589,6 +2589,14 @@ func (process *TeleportProcess) initAuthService() error {
 		return trace.Wrap(err)
 	}
 
+	// Wire in our own generic OIDC relying-party implementation. Teleport
+	// Enterprise does the equivalent from its `e/` submodule; that submodule
+	// is empty in this checkout, so authServer.oidcAuthService would
+	// otherwise stay nil and every OIDC login/connector-auth-request call
+	// would fail with errOIDCNotImplemented. See GOOGLE_SSO_PLAN.md and
+	// lib/auth/oidc_service.go.
+	authServer.SetOIDCService(auth.NewOIDCService(authServer))
+
 	// setLocalAuth must be called before InitUsageReporting so that enterprise
 	// auth extensions can access the UsageReporter via GetAuthServer.
 	process.setLocalAuth(authServer)
